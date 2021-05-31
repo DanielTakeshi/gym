@@ -9,6 +9,14 @@ DEFAULT_CAMERA_CONFIG = {
 
 
 class HalfCheetahEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+    """Making a sparse version of HalfCheetah.
+
+    Reward is based on the distance traveled, see `step` for details.
+    Actually, for HC, it seemed like the `done` was always False? That might
+    explain why it was always running to 1000 steps in each episode. Other
+    environments, such as Hopper, have a clearly defined `done()` method.
+    """
+
     def __init__(self,
                  xml_file='half_cheetah.xml',
                  forward_reward_weight=1.0,
@@ -18,13 +26,12 @@ class HalfCheetahEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(**locals())
 
         self._forward_reward_weight = forward_reward_weight
-
         self._ctrl_cost_weight = ctrl_cost_weight
-
         self._reset_noise_scale = reset_noise_scale
-
         self._exclude_current_positions_from_observation = (
             exclude_current_positions_from_observation)
+        # Daniel: will have to tune this value.
+        self.distance_threshold = 10
 
         mujoco_env.MujocoEnv.__init__(self, xml_file, 5)
 
@@ -38,22 +45,23 @@ class HalfCheetahEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         x_position_after = self.sim.data.qpos[0]
         x_velocity = ((x_position_after - x_position_before)
                       / self.dt)
-
         ctrl_cost = self.control_cost(action)
-
-        # TODO(daniel) Will change reward function.
         forward_reward = self._forward_reward_weight * x_velocity
-
         observation = self._get_obs()
-        reward = forward_reward - ctrl_cost
-        done = False
+
+        # Changing the reward and the `done` condition.
+        #reward = forward_reward - ctrl_cost
+        #done = False
+        reward = int(x_position_after >= self.distance_threshold)
+        done = reward == 1
+
         info = {
             'x_position': x_position_after,
             'x_velocity': x_velocity,
             'reward_run': forward_reward,
-            'reward_ctrl': -ctrl_cost
+            'reward_ctrl': -ctrl_cost,
+            'reward_dense': forward_reward - ctrl_cost,
         }
-
         return observation, reward, done, info
 
     def _get_obs(self):
